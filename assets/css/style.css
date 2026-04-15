@@ -48,19 +48,22 @@
 
 .stats {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(75px, 1fr));
   gap: 15px;
   margin: 20px 0;
 }
 
 .box {
   background: white;
-  padding: 15px;
-  border-radius: 12px;
+  padding: 8px;
+  border-radius: 10px;
   box-shadow: 0 4px 10px rgba(0,0,0,0.08);
   text-align: center;
   font-weight: bold;
+  
 }
+
+
 
 canvas {
   margin-top: 30px;
@@ -159,3 +162,47 @@ canvas {
 .logout:hover {
   background: #e60000;
 }
+
+.class-form {
+  margin-top: 20px;
+}
+
+.class-form input {
+  padding: 10px;
+  width: 250px;
+  border-radius: 6px;
+  border: 1px solid #ccc;
+}
+
+.class-form button {
+  padding: 10px 15px;
+  background: #4CAF50;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  margin-left: 10px;
+  cursor: pointer;
+}
+
+.class-form button:hover {
+  background: #45a049;
+}
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 20px;
+  margin-bottom: 30px;
+}
+
+.chart-container {
+  height: 250px;
+}
+
+.badge.overdue {
+  background: #f44336;
+  color: white;
+  padding: 4px 8px;
+  border-radius: 6px;
+}
+

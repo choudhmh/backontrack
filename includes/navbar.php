@@ -22,6 +22,7 @@ if ($user_id && isset($conn)) {
 
   <div class="nav-left">
     <a href="dashboard.php">Dashboard</a>
+    <a href="join-class.php">Join Class</a>
     <a href="task.php">Tasks</a>
     <a href="recovery-plan.php">AI Recommendations</a>
     <a href="materials.php">Materials</a>
