@@ -12,6 +12,7 @@ $user_id = $_SESSION["user_id"];
 <!-- ADD TASK -->
 <form method="POST" action="actions/create-task.php">
   <input type="text" name="title" placeholder="Task title" required>
+  <input type="text" name="description" placeholder="Task Description">
   <input type="date" name="deadline" required>
   <button type="submit">Add Task</button>
 </form>
@@ -28,6 +29,7 @@ while ($row = $result->fetch_assoc()) {
   echo "<div style='margin-bottom:10px;'>";
 
   echo "<strong>" . $row["title"] . "</strong><br>";
+  echo "Description: " . $row["description"] . "<br>";
   echo "Deadline: " . $row["deadline"] . "<br>";
   echo "Status: " . $row["status"] . "<br>";
 

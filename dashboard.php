@@ -43,6 +43,7 @@ if ($tasks && $tasks->num_rows > 0) {
     echo "<table class='task-table'>";
     echo "<tr>
             <th>Task</th>
+            <th>Description</th>
             <th>Deadline</th>
             <th>Status</th>
           </tr>";
@@ -57,6 +58,7 @@ if ($tasks && $tasks->num_rows > 0) {
 
         echo "<tr>";
         echo "<td>" . htmlspecialchars($t["title"]) . "</td>";
+        echo "<td>" . htmlspecialchars($t["description"] ?? '') . "</td>";
         echo "<td>" . htmlspecialchars($t["deadline"]) . "</td>";
         echo "<td>" . $badge . "</td>";
         echo "</tr>";

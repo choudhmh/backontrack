@@ -106,6 +106,16 @@ canvas {
   background: #f9f9f9;
 }
 
+.task-table td {
+  vertical-align: top;
+}
+
+.task-table td:nth-child(2) {
+  max-width: 250px;
+  color: #555;
+  font-size: 13px;
+}
+
 .navbar {
   display: flex;
   justify-content: space-between;
