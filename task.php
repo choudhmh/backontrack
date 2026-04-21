@@ -16,9 +16,6 @@ if (!$class_id) {
     exit();
 }
 
-/* =========================
-   GET CLASS NAME
-========================= */
 $class = $conn->query("SELECT name FROM classes WHERE id=$class_id")->fetch_assoc();
 ?>
 

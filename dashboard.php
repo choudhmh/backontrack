@@ -163,6 +163,7 @@ if ($tasks && $tasks->num_rows > 0) {
 ========================= -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
+
 <script>
 const ctx = document.getElementById('progressChart').getContext('2d');
 
