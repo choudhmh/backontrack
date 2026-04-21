@@ -26,7 +26,7 @@ if ($user_id && isset($conn)) {
     <a href="task.php">Tasks</a>
     <a href="recovery-plan.php">AI Recommendations</a>
     <a href="materials.php">Materials</a>
-    <a href="notes.php">Notes</a>
+  
   </div>
 
   <div class="nav-right">

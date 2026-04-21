@@ -5,8 +5,10 @@ include("includes/header.php");
 include("includes/navbar.php");
 include("config/env.php");
 
-$user_id = $_SESSION["user_id"];
+require 'vendor/autoload.php';
+use Smalot\PdfParser\Parser;
 
+$user_id = $_SESSION["user_id"];
 $material_id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
 
 if (!$material_id) {
@@ -30,12 +32,42 @@ if (!$material) {
 $class_id = $material['class_id'];
 
 /* =========================
-   GET FILES
+   GET FILES + EXTRACT TEXT
 ========================= */
 $stmt = $conn->prepare("SELECT * FROM material_files WHERE material_id=?");
 $stmt->bind_param("i", $material_id);
 $stmt->execute();
-$filesResult = $stmt->get_result();
+$result = $stmt->get_result();
+
+$filesList = [];
+$fileText = "";
+
+$parser = new Parser();
+
+while ($f = $result->fetch_assoc()) {
+
+    $filesList[] = $f;
+    $path = $f['file_path'];
+
+    if (file_exists($path)) {
+
+        $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+
+        try {
+            if ($ext === "pdf") {
+                $pdf = $parser->parseFile($path);
+                $fileText .= $pdf->getText() . "\n\n";
+            } elseif ($ext === "txt") {
+                $fileText .= file_get_contents($path) . "\n\n";
+            }
+        } catch (Exception $e) {
+            $fileText .= "[Error reading file]\n";
+        }
+    }
+}
+
+/* limit text for AI */
+$fileText = substr($fileText, 0, 3000);
 
 /* =========================
    AI CACHE
@@ -43,7 +75,7 @@ $filesResult = $stmt->get_result();
 $ai_output = $_SESSION['ai_' . $material_id] ?? null;
 
 /* =========================
-   RUN AI ONCE
+   RUN AI
 ========================= */
 if (!$ai_output) {
 
@@ -56,12 +88,14 @@ if (!$ai_output) {
         $prompt = "
 You are a study assistant.
 
-Topic: {$material['title']}
+Analyze this content:
 
-Provide:
+$fileText
+
+Return:
 
 EXPLANATION:
-- simple bullet points
+
 
 TASKS:
 1. Task one
@@ -73,20 +107,20 @@ TASKS:
 
         $ch = curl_init();
 
-        curl_setopt($ch, CURLOPT_URL, "https://api.openai.com/v1/chat/completions");
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_POST, true);
-
-        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode([
-            "model" => "gpt-4o-mini",
-            "messages" => [
-                ["role" => "user", "content" => $prompt]
+        curl_setopt_array($ch, [
+            CURLOPT_URL => "https://api.openai.com/v1/chat/completions",
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_POST => true,
+            CURLOPT_POSTFIELDS => json_encode([
+                "model" => "gpt-4o-mini",
+                "messages" => [
+                    ["role" => "user", "content" => $prompt]
+                ]
+            ]),
+            CURLOPT_HTTPHEADER => [
+                "Content-Type: application/json",
+                "Authorization: Bearer " . $apiKey
             ]
-        ]));
-
-        curl_setopt($ch, CURLOPT_HTTPHEADER, [
-            "Content-Type: application/json",
-            "Authorization: Bearer " . $apiKey
         ]);
 
         $response = curl_exec($ch);
@@ -105,18 +139,32 @@ TASKS:
 }
 
 /* =========================
-   PARSE AI TASKS
+   PARSE TASKS (NO HEADERS)
 ========================= */
 $ai_tasks = [];
 
-if (strpos($ai_output, "TASKS:") !== false) {
+$lines = preg_split('/\r\n|\r|\n/', $ai_output);
 
-    $parts = explode("TASKS:", $ai_output);
-    $lines = explode("\n", trim($parts[1]));
+$inTasks = false;
 
-    foreach ($lines as $line) {
+foreach ($lines as $line) {
 
-        $task = preg_replace('/^\d+\.\s*/', '', trim($line));
+    $line = trim($line);
+
+    if (stripos($line, "TASKS") !== false) {
+        $inTasks = true;
+        continue;
+    }
+
+    if ($inTasks) {
+
+        if ($line === "") continue;
+
+        // remove numbering, bullets, etc.
+        $task = preg_replace('/^[-•*\d\.\)\s]+/', '', $line);
+
+        // stop if explanation starts again
+        if (stripos($task, "EXPLANATION") !== false) break;
 
         if (strlen($task) > 3) {
             $ai_tasks[] = $task;
@@ -125,39 +173,57 @@ if (strpos($ai_output, "TASKS:") !== false) {
 }
 
 /* =========================
-   ADD SELECTED TASKS
-   + PREVENT DUPLICATES
+   ADD SELECTED TASKS (FIXED)
 ========================= */
-if (isset($_POST['add_tasks']) && !empty($_POST['selected_tasks'])) {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_tasks'])) {
 
-    foreach ($_POST['selected_tasks'] as $task) {
+    if (!empty($_POST['selected_tasks'])) {
 
-        $task = trim($task);
+        foreach ($_POST['selected_tasks'] as $task) {
 
-        // check duplicate
-        $check = $conn->prepare("
-            SELECT id FROM tasks 
-            WHERE user_id=? AND class_id=? AND title=?
-        ");
-        $check->bind_param("iis", $user_id, $class_id, $task);
-        $check->execute();
-        $exists = $check->get_result()->num_rows;
+            $task = trim($task);
+            if (strlen($task) < 3) continue;
 
-        if ($exists > 0) continue;
+            // prevent duplicates
+            $check = $conn->prepare("
+                SELECT id FROM tasks 
+                WHERE user_id=? AND class_id=? AND title=?
+            ");
+            $check->bind_param("iis", $user_id, $class_id, $task);
+            $check->execute();
 
-        // FIXED DEADLINE
-        $deadline = date('Y-m-d', strtotime('+7 days'));
+            if ($check->get_result()->num_rows > 0) continue;
 
-        $stmt = $conn->prepare("
-            INSERT INTO tasks (user_id, class_id, title, description, status, deadline)
-            VALUES (?, ?, ?, '', 'pending', ?)
-        ");
+            $deadline = date('Y-m-d', strtotime('+7 days'));
 
-        $stmt->bind_param("iiss", $user_id, $class_id, $task, $deadline);
-        $stmt->execute();
+            $description = "";
+            $notes = "";
+            $status = "pending";
+
+            $stmt = $conn->prepare("
+                INSERT INTO tasks 
+                (user_id, class_id, title, description, notes, status, deadline)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            ");
+
+            $stmt->bind_param(
+                "iisssss",
+                $user_id,
+                $class_id,
+                $task,
+                $description,
+                $notes,
+                $status,
+                $deadline
+            );
+
+            $stmt->execute();
+        }
+
+        echo "<p style='color:green;'>✅ Tasks added successfully!</p>";
+    } else {
+        echo "<p style='color:red;'>❌ No tasks selected.</p>";
     }
-
-    echo "<p style='color:green;'>✅ Selected tasks added successfully!</p>";
 }
 ?>
 
@@ -168,11 +234,11 @@ if (isset($_POST['add_tasks']) && !empty($_POST['selected_tasks'])) {
 <hr>
 
 <h3>📄 Files</h3>
-<?php while ($f = $filesResult->fetch_assoc()): ?>
+<?php foreach ($filesList as $f): ?>
     <a href="<?= htmlspecialchars($f['file_path']); ?>" target="_blank">
         📄 <?= htmlspecialchars(basename($f['file_path'])); ?>
     </a><br>
-<?php endwhile; ?>
+<?php endforeach; ?>
 
 <hr>
 
@@ -184,33 +250,36 @@ if (isset($_POST['add_tasks']) && !empty($_POST['selected_tasks'])) {
 
 <hr>
 
-<!-- TASK PREVIEW -->
 <?php if (!empty($ai_tasks)) { ?>
 
-<h3>🧠 AI Task Preview</h3>
+<h3>AI Task Suggestions</h3>
 
 <form method="POST">
 
-    <?php foreach ($ai_tasks as $task): ?>
-        <label style="display:block;margin:6px 0;">
-            <input type="checkbox" name="selected_tasks[]" value="<?= htmlspecialchars($task); ?>" checked>
-            <?= htmlspecialchars($task); ?>
-        </label>
-    <?php endforeach; ?>
+<?php foreach ($ai_tasks as $task): ?>
+    <label style="display:block;margin:8px 0;">
+        <input type="checkbox" name="selected_tasks[]" value="<?= htmlspecialchars($task); ?>" checked>
+        <?= htmlspecialchars($task); ?>
+    </label>
+<?php endforeach; ?>
 
-    <button type="submit" name="add_tasks" style="
-        margin-top:15px;
-        padding:10px 15px;
-        background:#4CAF50;
-        color:white;
-        border:none;
-        border-radius:8px;
-        cursor:pointer;
-    ">
-        ➕ Add Selected Tasks
-    </button>
+<button type="submit" name="add_tasks" style="
+    margin-top:15px;
+    padding:10px 15px;
+    background:#4CAF50;
+    color:white;
+    border:none;
+    border-radius:8px;
+    cursor:pointer;
+">
+    ➕ Add Selected Tasks
+</button>
 
 </form>
+
+<?php } else { ?>
+
+<p style="color:orange;">⚠️ No tasks detected from AI output.</p>
 
 <?php } ?>
 
