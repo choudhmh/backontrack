@@ -95,7 +95,70 @@ $pending = $total - $done;
 $progress = ($total > 0) ? round(($done / $total) * 100) : 0;
 ?>
 
+<?php
+$upcoming_stmt = $conn->prepare("
+    SELECT title, deadline 
+    FROM tasks
+    WHERE user_id=? 
+    AND class_id=? 
+    AND status='pending'
+    AND deadline BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 45 HOUR)
+    ORDER BY deadline ASC
+");
+$upcoming_stmt->bind_param("ii", $user_id, $class_id);
+$upcoming_stmt->execute();
+$upcoming_tasks = $upcoming_stmt->get_result();
+
+$notifications = [];
+
+while ($t = $upcoming_tasks->fetch_assoc()) {
+    $notifications[] = $t;
+}
+?>
+
 <h2>Dashboard</h2>
+
+<?php if (!empty($notifications)) { ?>
+
+<div id="deadlineAlert" style="
+    position:fixed;
+    top:20px;
+    right:20px;
+    background:#fff;
+    border-left:6px solid #ff9800;
+    padding:15px;
+    width:300px;
+    box-shadow:0 5px 15px rgba(0,0,0,0.2);
+    border-radius:10px;
+    z-index:9999;
+">
+    <strong>⏰ Upcoming Deadlines</strong><br><br>
+
+    <?php foreach ($notifications as $n): ?>
+        <div style="margin-bottom:8px;">
+            📌 <?= htmlspecialchars($n['title']); ?><br>
+            <small>Due: <?= htmlspecialchars($n['deadline']); ?></small>
+        </div>
+    <?php endforeach; ?>
+
+    <button onclick="closeAlert()" style="
+        margin-top:10px;
+        padding:5px 10px;
+        border:none;
+        background:#f44336;
+        color:white;
+        border-radius:5px;
+        cursor:pointer;
+    ">Dismiss</button>
+</div>
+
+<script>
+function closeAlert() {
+    document.getElementById("deadlineAlert").style.display = "none";
+}
+</script>
+
+<?php } ?>
 
 <!-- CLASS SWITCH -->
 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">

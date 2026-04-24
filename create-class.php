@@ -9,31 +9,60 @@ $message = "";
 
 if (isset($_POST['class_name'])) {
 
-    // sanitize input
     $name = trim($_POST['class_name']);
 
     if (!empty($name)) {
 
-        // better unique join code
-        $join_code = strtoupper(substr(md5(uniqid()), 0, 6));
+        /* =========================
+           GENERATE UNIQUE JOIN CODE
+        ========================== */
+        do {
+            $join_code = strtoupper(substr(md5(uniqid()), 0, 6));
 
-        // insert class
+            $check = $conn->prepare("SELECT id FROM classes WHERE join_code=?");
+            $check->bind_param("s", $join_code);
+            $check->execute();
+            $exists = $check->get_result()->num_rows;
+
+        } while ($exists > 0);
+
+        /* =========================
+           INSERT CLASS
+        ========================== */
         $stmt = $conn->prepare("INSERT INTO classes (name, join_code) VALUES (?, ?)");
-        $stmt->bind_param("ss", $name, $join_code);
-        $stmt->execute();
 
-        // get new class ID
-        $class_id = $conn->insert_id;
+        if (!$stmt) {
+            $message = "❌ Error preparing class insert.";
+        } else {
 
-        // auto-add creator to class
-        $stmt = $conn->prepare("INSERT INTO class_members (user_id, class_id) VALUES (?, ?)");
-        $stmt->bind_param("ii", $user_id, $class_id);
-        $stmt->execute();
+            $stmt->bind_param("ss", $name, $join_code);
 
-        // set current class
-        $_SESSION['class_id'] = $class_id;
+            if ($stmt->execute()) {
 
-        $message = "✅ Class created! Join Code: <strong>$join_code</strong>";
+                $class_id = $conn->insert_id;
+
+                /* =========================
+                   ADD USER TO CLASS
+                ========================== */
+                $stmt2 = $conn->prepare("INSERT INTO class_members (user_id, class_id) VALUES (?, ?)");
+
+                if ($stmt2) {
+                    $stmt2->bind_param("ii", $user_id, $class_id);
+                    $stmt2->execute();
+                }
+
+                /* =========================
+                   SET SESSION CLASS
+                ========================== */
+                $_SESSION['class_id'] = $class_id;
+
+                $message = "✅ Class created! Join Code: <strong>" . htmlspecialchars($join_code) . "</strong>";
+
+            } else {
+                $message = "❌ Failed to create class.";
+            }
+        }
+
     } else {
         $message = "❌ Class name cannot be empty.";
     }
@@ -47,6 +76,8 @@ if (isset($_POST['class_name'])) {
   <button type="submit">Create Class</button>
 </form>
 
-<p><?php echo $message; ?></p>
+<?php if ($message): ?>
+  <p><?= $message; ?></p>
+<?php endif; ?>
 
 <?php include("includes/footer.php"); ?>
