@@ -1,6 +1,8 @@
+
 <?php
 session_start();
 include("config/db.php");
+include("includes/lang.php");
 
 $error = "";
 

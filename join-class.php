@@ -1,8 +1,10 @@
 <?php
 include("includes/auth.php");
 include("config/db.php");
+include("includes/lang.php");
 include("includes/header.php");
 include("includes/navbar.php");
+
 
 $user_id = $_SESSION["user_id"];
 $message = "";

@@ -1,8 +1,10 @@
 <?php
 include("includes/auth.php");
 include("config/db.php");
+include("includes/lang.php");
 include("includes/header.php");
 include("includes/navbar.php");
+
 
 $user_id = $_SESSION["user_id"];
 $class_id = $_SESSION["class_id"] ?? 0;
@@ -92,7 +94,7 @@ if (isset($_POST['upload']) && $current_subject) {
 $subjects = $conn->query("SELECT * FROM subjects WHERE class_id=$class_id");
 ?>
 
-<h2>Study Materials</h2>
+<h2><?= t("study_materials") ?></h2>
 
 <?php if ($message) { ?>
   <p style="color:green;"><?php echo $message; ?></p>

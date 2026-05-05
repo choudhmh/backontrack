@@ -21,20 +21,25 @@ if ($user_id && isset($conn)) {
 <nav class="navbar">
 
   <div class="nav-left">
-    <a href="dashboard.php">Dashboard</a>
-    <a href="join-class.php">Join Class</a>
-    <a href="task.php">Tasks</a>
-    <a href="recovery-plan.php">AI Recommendations</a>
-    <a href="materials.php">Materials</a>
+  <a href="dashboard.php"><?= t('dashboard') ?></a>
+<a href="join-class.php"><?= t('join_class') ?></a>
+<a href="task.php"><?= t('tasks') ?></a>
+<a href="recovery-plan.php"><?= t('ai') ?></a>
+<a href="materials.php"><?= t('materials') ?></a>
   
   </div>
 
+  <div style="display:flex; gap:10px;">
+  <a href="?lang=en">🇬🇧 EN</a>
+<a href="?lang=ru">🇷🇺 RU</a>
+<a href="?lang=kz">🇰🇿 KZ</a>
+</div>
   <div class="nav-right">
     <span class="user-name">
       👤 <?php echo htmlspecialchars($username); ?>
     </span>
 
-    <a class="logout" href="logout.php">Logout</a>
+ <a class="logout" href="logout.php"><?= t('logout') ?></a>
   </div>
 
 </nav>

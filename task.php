@@ -1,6 +1,7 @@
 <?php
 include("includes/auth.php");
 include("config/db.php");
+include("includes/lang.php");
 include("includes/header.php");
 include("includes/navbar.php");
 
@@ -11,7 +12,7 @@ $class_id = $_SESSION["class_id"] ?? 0;
    CHECK CLASS
 ========================= */
 if (!$class_id) {
-    echo "<p>Please join a class first.</p>";
+    echo "<p>" . t("join_class_first") . "</p>";
     include("includes/footer.php");
     exit();
 }
@@ -25,25 +26,26 @@ $stmt->execute();
 $class = $stmt->get_result()->fetch_assoc();
 ?>
 
-<h2>My Tasks</h2>
+<h2><?= t("my_tasks") ?></h2>
 
-<h3>Class: <?= htmlspecialchars($class['name'] ?? ''); ?></h3>
+<h3><?= t("class") ?>: <?= htmlspecialchars($class['name'] ?? '') ?></h3>
 
 <!-- ADD TASK -->
 <form method="POST" action="actions/create-task.php" class="task-form">
-  <input type="text" name="title" placeholder="Task title" required>
-  <input type="text" name="description" placeholder="Task description">
-  <input type="text" name="notes" placeholder="Task note (optional)">
+  <input type="text" name="title" placeholder="<?= t("task_title") ?>" required>
+  <input type="text" name="description" placeholder="<?= t("task_description") ?>">
+  <input type="text" name="notes" placeholder="<?= t("task_notes") ?>">
   <input type="date" name="deadline" required>
-  <button type="submit">Add Task</button>
+  <button type="submit"><?= t("add_task") ?></button>
 </form>
 
 <hr>
 
-<h3>Your Tasks</h3>
+<h3><?= t("Your_Tasks") ?></h3>
 
 <?php
-$sql = "SELECT * FROM tasks 
+$sql = "
+SELECT * FROM tasks 
 WHERE user_id=? AND class_id=? 
 ORDER BY 
     CASE 
@@ -53,7 +55,8 @@ ORDER BY
         WHEN deadline <= DATE_ADD(CURDATE(), INTERVAL 7 DAY) THEN 3
         ELSE 4
     END,
-    deadline ASC";
+    deadline ASC
+";
 
 $stmt = $conn->prepare($sql);
 $stmt->bind_param("ii", $user_id, $class_id);
@@ -64,40 +67,46 @@ if ($result && $result->num_rows > 0) {
 
     echo "<table class='task-table'>";
     echo "<tr>
-            <th>Task</th>
-            <th>Description</th>
-            <th>Notes</th>
-            <th>Deadline</th>
-            <th>Status</th>
-            <th>Actions</th>
+            <th>" . t("task") . "</th>
+            <th>" . t("description") . "</th>
+            <th>" . t("notes") . "</th>
+            <th>" . t("deadline") . "</th>
+            <th>" . t("status") . "</th>
+            <th>" . t("actions") . "</th>
           </tr>";
 
     while ($row = $result->fetch_assoc()) {
 
         $status = $row["status"] ?? 'pending';
+        $deadline = $row["deadline"];
 
-        $badge = ($status == "done")
-            ? "<span class='badge done'>Completed</span>"
-            : "<span class='badge pending'>Pending</span>";
+        $isOverdue = ($status != "done" && $deadline < date("Y-m-d"));
+
+        if ($status == "done") {
+            $badge = "<span class='badge done'>" . t("completed") . "</span>";
+        } elseif ($isOverdue) {
+            $badge = "<span class='badge overdue'>" . t("overdue") . "</span>";
+        } else {
+            $badge = "<span class='badge pending'>" . t("pending") . "</span>";
+        }
 
         echo "<tr>";
 
+        // ⚠️ DB content (NOT translated automatically)
         echo "<td>" . htmlspecialchars($row["title"]) . "</td>";
         echo "<td>" . htmlspecialchars($row["description"] ?? '') . "</td>";
-
-        // NEW NOTE COLUMN
         echo "<td>" . htmlspecialchars($row["notes"] ?? '') . "</td>";
 
-        echo "<td>" . htmlspecialchars($row["deadline"]) . "</td>";
+        echo "<td>" . htmlspecialchars($deadline) . "</td>";
         echo "<td>" . $badge . "</td>";
 
         echo "<td>";
 
         if ($status == "pending") {
-            echo "<a href='actions/complete-task.php?id=" . $row["id"] . "'>✔</a> ";
+            echo "<a href='actions/complete-task.php?id=" . $row["id"] . "' title='".t("mark_done")."'>✔</a> ";
         }
 
-        echo "<a href='actions/delete-task.php?id=" . $row["id"] . "'>❌</a>";
+        echo "<a href='actions/delete-task.php?id=" . $row["id"] . "' title='".t("delete")."'>❌</a>";
 
         echo "</td>";
 
@@ -107,7 +116,7 @@ if ($result && $result->num_rows > 0) {
     echo "</table>";
 
 } else {
-    echo "<p>No tasks found for this class.</p>";
+    echo "<p>" . t("no_tasks") . "</p>";
 }
 ?>
 

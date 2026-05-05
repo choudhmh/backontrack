@@ -11,7 +11,7 @@
   padding: 18px;
   box-shadow: 0 8px 20px rgba(0,0,0,0.08);
   transition: 0.25s ease;
-  border-left: 6px solid #4CAF50;
+  border-left: 6px solid #351658;
 }
 
 .card:hover {
@@ -23,7 +23,7 @@
   font-size: 14px;
   font-weight: bold;
   color: white;
-  background: #4CAF50;
+  background: #af4c8b;
   display: inline-block;
   padding: 5px 10px;
   border-radius: 8px;

@@ -1,6 +1,7 @@
 <?php
 include("includes/auth.php");
 include("config/db.php");
+include("includes/lang.php"); // MUST come before UI
 include("includes/header.php");
 include("includes/navbar.php");
 
@@ -20,17 +21,15 @@ $stmt->execute();
 $classes = $stmt->get_result();
 
 /* =========================
-   AUTO RESTORE CLASS IF MISSING
+   AUTO RESTORE CLASS
 ========================= */
 $class_id = $_SESSION["class_id"] ?? null;
 
 if (!$class_id) {
-
     $stmt = $conn->prepare("
         SELECT class_id 
         FROM class_members 
-        WHERE user_id = ? 
-        LIMIT 1
+        WHERE user_id=? LIMIT 1
     ");
     $stmt->bind_param("i", $user_id);
     $stmt->execute();
@@ -46,13 +45,13 @@ if (!$class_id) {
    SAFETY CHECK
 ========================= */
 if (!$class_id) {
-    echo "<p>Please join a class first.</p>";
+    echo "<p>" . t("join_class_first") . "</p>";
     include("includes/footer.php");
     exit();
 }
 
 /* =========================
-   CLASS SWITCH
+   SWITCH CLASS
 ========================= */
 if (isset($_POST['switch_class'])) {
     $_SESSION['class_id'] = (int)$_POST['class_id'];
@@ -68,14 +67,13 @@ $stmt->bind_param("i", $class_id);
 $stmt->execute();
 $class = $stmt->get_result()->fetch_assoc();
 
-$class_name = $class['name'] ?? 'Unknown Class';
+$class_name = $class['name'] ?? 'Unknown';
 
 /* =========================
    TASK STATS
 ========================= */
 $stmt = $conn->prepare("
-    SELECT COUNT(*) as c 
-    FROM tasks 
+    SELECT COUNT(*) as c FROM tasks 
     WHERE user_id=? AND class_id=?
 ");
 $stmt->bind_param("ii", $user_id, $class_id);
@@ -83,8 +81,7 @@ $stmt->execute();
 $total = $stmt->get_result()->fetch_assoc()["c"] ?? 0;
 
 $stmt = $conn->prepare("
-    SELECT COUNT(*) as c 
-    FROM tasks 
+    SELECT COUNT(*) as c FROM tasks 
     WHERE user_id=? AND class_id=? AND status='done'
 ");
 $stmt->bind_param("ii", $user_id, $class_id);
@@ -93,9 +90,10 @@ $done = $stmt->get_result()->fetch_assoc()["c"] ?? 0;
 
 $pending = $total - $done;
 $progress = ($total > 0) ? round(($done / $total) * 100) : 0;
-?>
 
-<?php
+/* =========================
+   DEADLINE NOTIFICATIONS
+========================= */
 $upcoming_stmt = $conn->prepare("
     SELECT title, deadline 
     FROM tasks
@@ -107,49 +105,34 @@ $upcoming_stmt = $conn->prepare("
 ");
 $upcoming_stmt->bind_param("ii", $user_id, $class_id);
 $upcoming_stmt->execute();
-$upcoming_tasks = $upcoming_stmt->get_result();
-
-$notifications = [];
-
-while ($t = $upcoming_tasks->fetch_assoc()) {
-    $notifications[] = $t;
-}
+$notifications = $upcoming_stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 ?>
 
-<h2>Dashboard</h2>
+<h2><?= t("dashboard") ?></h2>
 
+<!-- 🔔 NOTIFICATIONS -->
 <?php if (!empty($notifications)) { ?>
-
 <div id="deadlineAlert" style="
-    position:fixed;
-    top:20px;
-    right:20px;
-    background:#fff;
-    border-left:6px solid #ff9800;
-    padding:15px;
-    width:300px;
+    position:fixed; top:20px; right:20px;
+    background:#fff; border-left:6px solid #ff9800;
+    padding:15px; width:300px;
     box-shadow:0 5px 15px rgba(0,0,0,0.2);
-    border-radius:10px;
-    z-index:9999;
+    border-radius:10px; z-index:9999;
 ">
-    <strong>⏰ Upcoming Deadlines</strong><br><br>
+    <strong><?= t("upcoming_deadlines") ?></strong><br><br>
 
     <?php foreach ($notifications as $n): ?>
         <div style="margin-bottom:8px;">
             📌 <?= htmlspecialchars($n['title']); ?><br>
-            <small>Due: <?= htmlspecialchars($n['deadline']); ?></small>
+            <small><?= t("due") ?>: <?= htmlspecialchars($n['deadline']); ?></small>
         </div>
     <?php endforeach; ?>
 
     <button onclick="closeAlert()" style="
-        margin-top:10px;
-        padding:5px 10px;
-        border:none;
-        background:#f44336;
-        color:white;
-        border-radius:5px;
-        cursor:pointer;
-    ">Dismiss</button>
+        margin-top:10px; padding:5px 10px;
+        border:none; background:#f44336;
+        color:white; border-radius:5px; cursor:pointer;
+    "><?= t("dismiss") ?></button>
 </div>
 
 <script>
@@ -157,12 +140,10 @@ function closeAlert() {
     document.getElementById("deadlineAlert").style.display = "none";
 }
 </script>
-
 <?php } ?>
 
 <!-- CLASS SWITCH -->
-<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
-
+<div style="display:flex; justify-content:space-between; margin-bottom:15px;">
 <form method="POST">
     <select name="class_id" onchange="this.form.submit()">
         <?php while ($c = $classes->fetch_assoc()) { ?>
@@ -174,29 +155,25 @@ function closeAlert() {
     </select>
     <input type="hidden" name="switch_class" value="1">
 </form>
-
 </div>
 
-<h3>Class: <?= htmlspecialchars($class_name); ?></h3>
+<h3><?= t("class") ?>: <?= htmlspecialchars($class_name); ?></h3>
 
 <!-- STATS -->
 <div class="dashboard-grid">
-
   <div class="stats">
-    <div class="box">Total Tasks: <?= $total; ?></div>
-    <div class="box">Completed: <?= $done; ?></div>
-    <div class="box">Pending: <?= $pending; ?></div>
-    <div class="box">Progress: <?= $progress; ?>%</div>
+    <div class="box"><?= t("total_tasks") ?>: <?= $total; ?></div>
+    <div class="box"><?= t("completed") ?>: <?= $done; ?></div>
+    <div class="box"><?= t("pending") ?>: <?= $pending; ?></div>
+    <div class="box"><?= t("progress") ?>: <?= $progress; ?>%</div>
   </div>
-
   <div class="chart-container">
     <canvas id="progressChart"></canvas>
   </div>
-
 </div>
 
 <!-- TASK TABLE -->
-<h3>Your Tasks</h3>
+<h3><?= t("Your_Tasks") ?></h3>
 
 <?php
 $stmt = $conn->prepare("
@@ -215,43 +192,37 @@ ORDER BY
 $stmt->bind_param("ii", $user_id, $class_id);
 $stmt->execute();
 $tasks = $stmt->get_result();
-$stmt->bind_param("ii", $user_id, $class_id);
-$stmt->execute();
-$tasks = $stmt->get_result();
 
-if ($tasks && $tasks->num_rows > 0) {
+if ($tasks->num_rows > 0) {
 
     echo "<table class='task-table'>";
     echo "<tr>
-            <th>Task</th>
-            <th>Description</th>
-            <th>Notes</th>
-            <th>Deadline</th>
-            <th>Status</th>
+            <th>".t("task")."</th>
+            <th>".t("description")."</th>
+            <th>".t("notes")."</th>
+            <th>".t("deadline")."</th>
+            <th>".t("status")."</th>
           </tr>";
 
     while ($t = $tasks->fetch_assoc()) {
 
-        $status = $t["status"] ?? 'pending';
+        $status = $t["status"];
         $deadline = $t["deadline"];
 
         $isOverdue = ($status != "done" && $deadline < date("Y-m-d"));
 
         if ($status == "done") {
-            $badge = "<span class='badge done'>Completed</span>";
+            $badge = "<span class='badge done'>".t("completed")."</span>";
         } elseif ($isOverdue) {
-            $badge = "<span class='badge overdue'>Overdue</span>";
+            $badge = "<span class='badge overdue'>".t("overdue")."</span>";
         } else {
-            $badge = "<span class='badge pending'>Pending</span>";
+            $badge = "<span class='badge pending'>".t("pending")."</span>";
         }
 
         echo "<tr>";
         echo "<td>" . htmlspecialchars($t["title"]) . "</td>";
         echo "<td>" . htmlspecialchars($t["description"] ?? '') . "</td>";
-
-        // ✅ FIXED NOTES COLUMN
         echo "<td>" . htmlspecialchars($t["notes"] ?? '') . "</td>";
-
         echo "<td>" . htmlspecialchars($deadline) . "</td>";
         echo "<td>" . $badge . "</td>";
         echo "</tr>";
@@ -260,30 +231,20 @@ if ($tasks && $tasks->num_rows > 0) {
     echo "</table>";
 
 } else {
-    echo "<p>No tasks found for this class.</p>";
+    echo "<p>" . t("no_tasks") . "</p>";
 }
 ?>
 
 <!-- CHART -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
 <script>
-const ctx = document.getElementById('progressChart').getContext('2d');
-
-new Chart(ctx, {
+new Chart(document.getElementById('progressChart'), {
     type: 'doughnut',
     data: {
-        labels: ['Completed', 'Pending'],
+        labels: ['<?= t("completed") ?>', '<?= t("pending") ?>'],
         datasets: [{
-            data: [<?= $done; ?>, <?= $pending; ?>]
+            data: [<?= $done ?>, <?= $pending ?>]
         }]
-    },
-    options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-            legend: { position: 'bottom' }
-        }
     }
 });
 </script>
