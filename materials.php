@@ -26,68 +26,68 @@ $current_subject = isset($_GET['subject_id']) ? (int)$_GET['subject_id'] : 0;
    ADD SUBJECT
 ========================= */
 if (isset($_POST['add_subject'])) {
+
     $name = trim($_POST['subject_name']);
 
     if (!empty($name)) {
-        $stmt = $conn->prepare("INSERT INTO subjects (class_id, name) VALUES (?, ?)");
-        $stmt->bind_param("is", $class_id, $name);
-        $stmt->execute();
-        $message = "Subject added!";
-    }
-}
 
-/* =========================
-   UPLOAD MATERIAL (FIXED MULTI-FILE SYSTEM)
-========================= */
-if (isset($_POST['upload']) && $current_subject) {
-
-    $title = trim($_POST['title']);
-
-    if (!empty($_FILES['files']['name'][0])) {
-
-        $files = $_FILES['files'];
-        $allowed = ['pdf', 'doc', 'docx', 'png', 'jpg', 'jpeg'];
-
-        /* STEP 1: create ONE material entry */
-        $stmt = $conn->prepare("
-            INSERT INTO materials (user_id, class_id, subject_id, title)
-            VALUES (?, ?, ?, ?)
+        // Check for existing subject (case-insensitive)
+        $check = $conn->prepare("
+            SELECT id 
+            FROM subjects
+            WHERE class_id=? 
+            AND LOWER(name)=LOWER(?)
         ");
-        $stmt->bind_param("iiis", $user_id, $class_id, $current_subject, $title);
-        $stmt->execute();
 
-        $material_id = $stmt->insert_id;
+        $check->bind_param(
+            "is",
+            $class_id,
+            $name
+        );
 
-        /* STEP 2: upload multiple files */
-        for ($i = 0; $i < count($files['name']); $i++) {
+        $check->execute();
 
-            $original_name = $files['name'][$i];
-            $tmp = $files['tmp_name'][$i];
-            $size = $files['size'][$i];
+        $existing =
+        $check
+        ->get_result()
+        ->fetch_assoc();
 
-            $ext = strtolower(pathinfo($original_name, PATHINFO_EXTENSION));
+        if($existing){
 
-            if (!in_array($ext, $allowed)) continue;
-            if ($size > 5 * 1024 * 1024) continue;
+            $message = "❌ Subject already exists.";
 
-            $file_name = uniqid() . "_" . basename($original_name);
-            $path = "assets/uploads/" . $file_name;
+        } else {
 
-            if (move_uploaded_file($tmp, $path)) {
+            $stmt = $conn->prepare("
+                INSERT INTO subjects
+                (class_id,name)
+                VALUES (?,?)
+            ");
 
-                $stmt2 = $conn->prepare("
-                    INSERT INTO material_files (material_id, file_path)
-                    VALUES (?, ?)
-                ");
-                $stmt2->bind_param("is", $material_id, $path);
-                $stmt2->execute();
+            $stmt->bind_param(
+                "is",
+                $class_id,
+                $name
+            );
+
+            if($stmt->execute()){
+
+                $message="✅ Subject added!";
+
+            }else{
+
+                $message="❌ Error adding subject.";
+
             }
         }
 
-        $message = "Files uploaded successfully!";
-    }
-}
+    } else {
 
+        $message="❌ Subject name cannot be empty.";
+
+    }
+
+}
 /* =========================
    GET SUBJECTS
 ========================= */
