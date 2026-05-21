@@ -17,12 +17,57 @@ if (!$class_id) {
 $message = "";
 
 /* =========================
+   FILE CONTENT EXTRACTOR
+========================= */
+function extractFileContent($filePath, $ext) {
+
+    $ext = strtolower($ext);
+
+    if (!file_exists($filePath)) return "";
+
+    try {
+
+        // PDF
+        if ($ext === "pdf") {
+            require_once __DIR__ . '/vendor/autoload.php';
+            $parser = new \Smalot\PdfParser\Parser();
+            return $parser->parseFile($filePath)->getText();
+        }
+
+        // TXT
+        if ($ext === "txt") {
+            return file_get_contents($filePath);
+        }
+
+        // DOCX
+        if ($ext === "docx") {
+            $zip = new ZipArchive;
+            if ($zip->open($filePath) === true) {
+                $xml = $zip->getFromName("word/document.xml");
+                $zip->close();
+                return strip_tags($xml);
+            }
+        }
+
+        // Images (optional OCR)
+        if (in_array($ext, ["jpg", "jpeg", "png"])) {
+            return shell_exec("tesseract " . escapeshellarg($filePath) . " stdout");
+        }
+
+    } catch (Exception $e) {
+        return "";
+    }
+
+    return "";
+}
+
+/* =========================
    CURRENT SUBJECT
 ========================= */
 $current_subject = isset($_GET['subject_id']) ? (int)$_GET['subject_id'] : 0;
 
 /* =========================
-   ADD SUBJECT (WITH DUPLICATE CHECK)
+   ADD SUBJECT
 ========================= */
 if (isset($_POST['add_subject'])) {
 
@@ -66,7 +111,7 @@ if (isset($_POST['add_subject'])) {
 }
 
 /* =========================
-   UPLOAD MATERIAL (FIXED - THIS WAS MISSING)
+   UPLOAD MATERIAL
 ========================= */
 if (isset($_POST['upload']) && $current_subject) {
 
@@ -74,7 +119,6 @@ if (isset($_POST['upload']) && $current_subject) {
 
     if (!empty($title) && !empty($_FILES['files']['name'][0])) {
 
-        // 1. INSERT MATERIAL
         $stmt = $conn->prepare("
             INSERT INTO materials (user_id, class_id, subject_id, title)
             VALUES (?, ?, ?, ?)
@@ -86,7 +130,6 @@ if (isset($_POST['upload']) && $current_subject) {
 
             $material_id = $stmt->insert_id;
 
-            // 2. HANDLE FILE UPLOADS
             $files = $_FILES['files'];
 
             $upload_dir = "assets/uploads/";
@@ -145,13 +188,11 @@ $subjects = $conn->query("SELECT * FROM subjects WHERE class_id=$class_id");
   <p style="color:green;"><?php echo $message; ?></p>
 <?php } ?>
 
-<!-- ADD SUBJECT -->
 <form method="POST" style="margin-bottom:15px;">
   <input type="text" name="subject_name" placeholder="Add Subject (e.g. Physics)" required>
   <button type="submit" name="add_subject">Add Subject</button>
 </form>
 
-<!-- SELECT SUBJECT -->
 <form method="GET">
   <select name="subject_id" onchange="this.form.submit()">
     <option value="">Select Subject</option>
@@ -170,7 +211,6 @@ $subjects = $conn->query("SELECT * FROM subjects WHERE class_id=$class_id");
 
 <?php if ($current_subject) { ?>
 
-<!-- UPLOAD MATERIAL -->
 <h3>Upload Material</h3>
 
 <form method="POST" enctype="multipart/form-data">
@@ -181,7 +221,6 @@ $subjects = $conn->query("SELECT * FROM subjects WHERE class_id=$class_id");
 
 <hr>
 
-<!-- DISPLAY MATERIALS -->
 <h3>Materials</h3>
 
 <div class="materials-grid">
@@ -200,6 +239,12 @@ if ($materials && $materials->num_rows > 0) {
         echo "<div class='material-card'>";
         echo "<h4>" . htmlspecialchars($m['title']) . "</h4>";
 
+        /* =========================
+           IMPORTANT FIX: reset per material
+        ========================= */
+        $fullContent = "";
+        $hasReadableText = false;
+
         $files = $conn->query("
             SELECT * FROM material_files 
             WHERE material_id=" . (int)$m['id']
@@ -207,13 +252,31 @@ if ($materials && $materials->num_rows > 0) {
 
         while ($f = $files->fetch_assoc()) {
 
-            $fileName = basename($f['file_path']);
+            $filePath = $f['file_path'];
+            $ext = strtolower(pathinfo($filePath, PATHINFO_EXTENSION));
 
-            echo "<a href='" . htmlspecialchars($f['file_path']) . "' target='_blank'>📄 " . htmlspecialchars($fileName) . "</a><br>";
+            $fileText = extractFileContent($filePath, $ext);
+
+            if (strlen(trim($fileText)) > 20) {
+                $hasReadableText = true;
+                $fullContent .= "\n" . $fileText;
+            }
+
+            $fileName = basename($filePath);
+
+            echo "<a href='" . htmlspecialchars($filePath) . "' target='_blank'>📄 " . htmlspecialchars($fileName) . "</a><br>";
         }
 
         echo "<small>Uploaded: " . htmlspecialchars($m['created_at']) . "</small><br><br>";
-        echo "<a href='material-detail.php?id=" . $m['id'] . "' class='btn-ai'>🤖 Study</a>";
+
+        /* =========================
+           FINAL FIX: ONLY SHOW AI IF VALID
+        ========================= */
+        if ($hasReadableText) {
+            echo "<a href='material-detail.php?id=" . $m['id'] . "' class='btn-ai'>🤖 Study</a>";
+        } else {
+            echo "<span style='color:#999;'>⚠️ No readable text found</span>";
+        }
 
         echo "</div>";
     }

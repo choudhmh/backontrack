@@ -33,7 +33,42 @@ if (!$material) {
 }
 
 /* =========================
-   GET FILES + EXTRACT TEXT
+   EXTRACT FUNCTION (FIXED PROPERLY)
+========================= */
+function extractText($path, $parser) {
+
+    if (!file_exists($path)) return "";
+
+    $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+
+    try {
+
+        if ($ext === "pdf") {
+            return $parser->parseFile($path)->getText();
+        }
+
+        if ($ext === "txt") {
+            return file_get_contents($path);
+        }
+
+        if ($ext === "docx") {
+            $zip = new ZipArchive;
+            if ($zip->open($path) === true) {
+                $xml = $zip->getFromName("word/document.xml");
+                $zip->close();
+                return strip_tags($xml);
+            }
+        }
+
+    } catch (Exception $e) {
+        return "";
+    }
+
+    return "";
+}
+
+/* =========================
+   GET FILES + BUILD TEXT
 ========================= */
 $stmt = $conn->prepare("SELECT * FROM material_files WHERE material_id=?");
 $stmt->bind_param("i", $material_id);
@@ -47,38 +82,26 @@ $parser = new Parser();
 while ($f = $result->fetch_assoc()) {
 
     $filesList[] = $f;
-    $path = $f["file_path"];
 
-    if (file_exists($path)) {
+    $text = extractText($f["file_path"], $parser);
 
-        $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
-
-        try {
-            if ($ext === "pdf") {
-                $pdf = $parser->parseFile($path);
-                $fileText .= $pdf->getText() . "\n\n";
-            } elseif ($ext === "txt") {
-                $fileText .= file_get_contents($path) . "\n\n";
-            }
-        } catch (Exception $e) {
-            // ignore
-        }
+    // IMPORTANT: only add meaningful text
+    if (strlen(trim($text)) > 20) {
+        $fileText .= "\n" . $text;
     }
 }
 
 $fileText = trim($fileText);
-$fileText = substr($fileText, 0, 12000);
 
 /* =========================
-   FALLBACK (IMPORTANT FIX)
+   HARD FIX: NEVER ALLOW EMPTY INPUT
 ========================= */
-if (strlen($fileText) < 200) {
-    $fileText = "DOCUMENT CONTAINS LIMITED TEXT BUT MAY INCLUDE KEYWORDS OR TOPIC INDICATORS:
-" . $fileText;
+if (strlen($fileText) < 50) {
+    $fileText = "The document contains limited readable text. It may include diagrams, images, or scanned content.";
 }
 
 /* =========================
-   SMART CACHE (BETTER KEY)
+   SAFE CACHE KEY (FIXED)
 ========================= */
 $cacheKey = "ai_" . md5($material_id . $fileText);
 $ai_output = $_SESSION[$cacheKey] ?? null;
@@ -94,70 +117,32 @@ if (!$ai_output) {
         $ai_output = "❌ Missing API key.";
     } else {
 
-        /* =========================
-           SYSTEM PROMPT (IMPROVED)
-        ========================= */
         $systemPrompt = "
-You are an ELITE ACADEMIC ANALYST.
+You are a strict academic tutor.
 
-Your job is to deeply understand study materials and produce structured learning output.
-
-RULES:
-- ONLY use concepts found in the document
-- You MAY expand explanations using those same concepts
-- NEVER hallucinate or invent topics
-- NEVER say 'limited text' or 'cannot analyze'
-
-OUTPUT REQUIREMENTS:
-
-EXPLANATION:
-- MUST contain 12–20 bullet points
-- Each bullet must explain ONE real concept from the document
-- Each bullet must be 2–4 sentences long
-- Must explain meaning + function + relationship
-- Must group related ideas
-
-TASKS:
-- Exactly 5 tasks
-- Each task must reference at least ONE real document keyword
-- Must be actionable (not generic)
-- Must be different from each other
+Rules:
+- Use ONLY the provided material
+- Do NOT say 'limited text'
+- If content is small, focus on explaining it deeply
+- Do NOT hallucinate outside information
 ";
 
-        /* =========================
-           USER PROMPT (FIXED)
-        ========================= */
         $userPrompt = "
 STUDY MATERIAL:
-
-========================
+----------------
 $fileText
-========================
+----------------
 
-INSTRUCTIONS:
-
-1. Identify all important concepts
-2. Expand each concept into detailed explanation
-3. Show relationships between concepts
-4. Do NOT be brief
-5. Do NOT add outside knowledge
-
-OUTPUT FORMAT:
-
-EXPLANATION:
-• (12–20 detailed bullets)
-
-TASKS:
-1.
-2.
-3.
-4.
-5.
+TASK:
+- Explain everything important in detail
+- Break into clear sections
+- Extract key ideas and meaning
+- Give 5 learning tasks
 ";
 
         $payload = [
             "model" => "gpt-4o-mini",
-            "temperature" => 0.25,
+            "temperature" => 0.2,
             "messages" => [
                 ["role" => "system", "content" => $systemPrompt],
                 ["role" => "user", "content" => $userPrompt]
@@ -193,29 +178,17 @@ TASKS:
 }
 
 /* =========================
-   PARSE TASKS
+   TASK PARSING (SAFE)
 ========================= */
 $ai_tasks = [];
 
-$lines = preg_split('/\r\n|\r|\n/', $ai_output);
-$inTasks = false;
-
-foreach ($lines as $line) {
+foreach (preg_split('/\r\n|\r|\n/', $ai_output) as $line) {
 
     $line = trim($line);
 
-    if (stripos($line, "TASKS") !== false) {
-        $inTasks = true;
-        continue;
-    }
-
-    if ($inTasks) {
-
-        if ($line === "") continue;
-
-        $task = preg_replace('/^[-•*\d\.\)\s]+/', '', $line);
-
-        if (strlen($task) > 3) {
+    if (preg_match('/^\d+\./', $line)) {
+        $task = preg_replace('/^\d+\.\s*/', '', $line);
+        if (strlen($task) > 5) {
             $ai_tasks[] = $task;
         }
     }
